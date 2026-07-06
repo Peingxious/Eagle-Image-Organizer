@@ -1,25 +1,15 @@
+// 预编译正则，避免每次 new URL() 分配与解析（C3）
+const HTTP_URL_RE = /^https?:\/\/.+/i;
+const LOCAL_HOST_URL_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/.*)?$/i;
+
 // URL 检测函数
 export function isURL(str: string): boolean {
-    let url: URL;
-
-    try {
-        url = new URL(str);
-    } catch {
-        return false;
-    }
-    
-    return url.protocol === "http:" || url.protocol === "https:";
+    return HTTP_URL_RE.test(str);
 }
-
 
 // 检查是否为本地主机链接
 export function isLocalHostLink(str: string): boolean {
-    try {
-        const url = new URL(str);
-        return url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    } catch {
-        return false;
-    }
+    return LOCAL_HOST_URL_RE.test(str);
 }
 
 
@@ -60,16 +50,25 @@ export class LocalHostEmbedder {
         };
     }
 
+    // 按 src(+alt) 记忆嵌入判定，避免每次渲染重复计算（C3）
+    private embedCache = new Map<string, boolean>();
+
     // 检查是否应该嵌入此链接
     shouldEmbed(src: string, alt?: string): boolean {
-        // 如果提供了alt文本且表示图片，跳过嵌入
+        const key = alt ? src + " " + alt : src;
+        const cached = this.embedCache.get(key);
+        if (cached !== undefined) return cached;
+
+        let result: boolean;
         if (alt && isAltTextImage(alt)) {
             console.log(`[Eagle-Embed] 跳过图片嵌入: ${alt}, URL: ${src}`);
-            return false;
+            result = false;
+        } else {
+            // 确认是localhost链接
+            result = isLocalHostLink(src);
         }
-        
-        // 确认是localhost链接
-        return isLocalHostLink(src);
+        this.embedCache.set(key, result);
+        return result;
     }
 }
 

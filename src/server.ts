@@ -77,6 +77,10 @@ function getContentType(ext: string): string | null {
 
 export function startServer(libraryPath: string, port: number) {
 	if (isServerRunning) return;
+	if (!libraryPath) {
+		print("未配置 Eagle 库路径，跳过启动服务器");
+		return;
+	}
 
 	const imagesPath = path.join(libraryPath, "images");
 

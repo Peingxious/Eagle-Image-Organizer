@@ -6,6 +6,22 @@ function debugLog(message: string, ...args: any[]) {
     console.log(`[Eagle-Embed-Widget] ${message}`, ...args);
 }
 
+// C4：批量隐藏源 img，避免每个 EmbedWidget 各起一个 setTimeout(0)
+let pendingSiblingHides: EmbedWidget[] = [];
+let siblingHideScheduled = false;
+function scheduleSiblingHide(widget: EmbedWidget) {
+    pendingSiblingHides.push(widget);
+    if (!siblingHideScheduled) {
+        siblingHideScheduled = true;
+        requestAnimationFrame(() => {
+            siblingHideScheduled = false;
+            const batch = pendingSiblingHides;
+            pendingSiblingHides = [];
+            for (const w of batch) w.hideSourceSibling();
+        });
+    }
+}
+
 export class EmbedWidget extends WidgetType {
     private url: string;
     private alt: string;
@@ -50,22 +66,10 @@ export class EmbedWidget extends WidgetType {
                 // 添加编辑模式特定样式
                 this.container.classList.add("cm-embed-block");
 
-                // 添加编辑模式特定样式
+                // 添加编辑模式特定样式
                 this.container.classList.add("cm-embed-block");
-                // 在插入DOM后，检查前一个同级元素是否为与当前URL匹配的图片
-                setTimeout(() => {
-                    if (this.container && this.container.parentElement) {
-                        const prevSibling = this.container.previousSibling;
-
-                        if (prevSibling && prevSibling.nodeName === 'IMG') {
-                            const imgElement = prevSibling as HTMLImageElement;
-
-                            imgElement.classList.add("auto-embed-hide-display");
-                            // this.container.parentElement?.removeChild(this.container);
-                            // this.container.parentElement?.removeChild(imgElement);
-                        }
-                    }
-                }, 0);
+                // 在插入DOM后，检查前一个同级元素是否为与当前URL匹配的图片（C4：改为批量 rAF）
+                scheduleSiblingHide(this);
                 // 添加加载事件处理
                 if (result.iframeEl) {
                     const iframe = result.iframeEl;
@@ -90,6 +94,17 @@ export class EmbedWidget extends WidgetType {
         }
 
         return this.container;
+    }
+
+    // C4：在 rAF 批处理中隐藏前一个源 img 兄弟节点
+    hideSourceSibling(): void {
+        if (!this.container || !this.container.parentElement) return;
+        const prevSibling = this.container.previousSibling;
+        if (prevSibling && prevSibling.nodeName === "IMG") {
+            (prevSibling as HTMLImageElement).classList.add(
+                "auto-embed-hide-display",
+            );
+        }
     }
 
     // 显示错误信息

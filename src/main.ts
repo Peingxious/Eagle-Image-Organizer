@@ -98,8 +98,10 @@ export default class MyPlugin extends Plugin {
 		this.app.workspace.on("window-open", (workspaceWindow, window) => {
 			this.registerDocument(window.document);
 		});
-		// 在插件加载时启动服务器
-		startServer(this.settings.libraryPath, this.settings.port);
+		// 布局就绪后再启动服务器，避免阻塞启动关键路径（C2）
+		this.app.workspace.onLayoutReady(() => {
+			startServer(this.settings.libraryPath, this.settings.port);
+		});
 		this.api = {
 			getLatestEagleUrl: () => getLatestDirUrl(),
 			getActiveLibraryPath: () => this.settings.libraryPath,
@@ -144,16 +146,26 @@ export default class MyPlugin extends Plugin {
 		// console.log('Debug setting:', this.settings.debug);
 		setDebug(this.settings.debug);
 
+		// C7：合并两个 document 级 capture 点击处理器为单个，减少每点击开销
 		this.registerDomEvent(
 			document,
 			"click",
-			async (event: MouseEvent) => {
+			(event: MouseEvent) => {
+				// 1) 图片点击放大（参考 AttachFlow）
+				if (this.settings.clickView) {
+					handleImageClick(event, this.settings.adaptiveRatio);
+				}
+
+				// 2) localhost .info 链接点击处理
 				const target = event.target as HTMLElement;
-				// 使用更高效的选择器匹配，并合并逻辑
-				const isLink = target.matches(
-					"a.external-link, span.external-link, .cm-link, a.cm-underline",
-				);
-				if (!isLink) return;
+				// 廉价早退：仅命中链接类元素才继续
+				if (
+					!target.matches(
+						"a.external-link, span.external-link, .cm-link, a.cm-underline",
+					)
+				) {
+					return;
+				}
 
 				const activeView =
 					this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -201,11 +213,6 @@ export default class MyPlugin extends Plugin {
 			},
 			{ capture: true },
 		);
-		// 注册点击事件(参考AttachFlow)
-		this.registerDomEvent(document, "click", async (evt: MouseEvent) => {
-			if (!this.settings.clickView) return;
-			handleImageClick(evt, this.settings.adaptiveRatio);
-		});
 
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key === "Escape") {
@@ -254,7 +261,10 @@ export default class MyPlugin extends Plugin {
 		await this.updateLibraryPath();
 	}
 
-	async updateLibraryPath() {
+	// 返回是否发生了实际变更；仅变更时才写盘（C1）
+	async updateLibraryPath(): Promise<boolean> {
+		let changed = false;
+
 		if (!this.settings.libraries || this.settings.libraries.length === 0) {
 			const legacyPaths =
 				this.settings.libraryPaths &&
@@ -272,6 +282,7 @@ export default class MyPlugin extends Plugin {
 				},
 			];
 			this.settings.currentLibraryId = id;
+			changed = true;
 		}
 
 		const libraries = this.settings.libraries;
@@ -281,6 +292,7 @@ export default class MyPlugin extends Plugin {
 		if (!active) {
 			active = libraries[0];
 			this.settings.currentLibraryId = active.id;
+			changed = true;
 		}
 
 		if (!active.paths || active.paths.length === 0) {
@@ -288,6 +300,7 @@ export default class MyPlugin extends Plugin {
 				? [this.settings.libraryPath]
 				: [];
 			active.paths = fallback;
+			changed = true;
 		}
 
 		let selectedPath = active.paths[0] || "";
@@ -297,10 +310,24 @@ export default class MyPlugin extends Plugin {
 				break;
 			}
 		}
+		if (this.settings.libraryPath !== selectedPath) {
+			this.settings.libraryPath = selectedPath;
+			changed = true;
+		}
 
-		this.settings.libraryPath = selectedPath;
-		this.settings.libraryPaths = active.paths.slice();
-		await this.saveSettings();
+		const newLibraryPaths = active.paths.slice();
+		if (
+			JSON.stringify(this.settings.libraryPaths) !==
+			JSON.stringify(newLibraryPaths)
+		) {
+			this.settings.libraryPaths = newLibraryPaths;
+			changed = true;
+		}
+
+		if (changed) {
+			await this.saveSettings();
+		}
+		return changed;
 	}
 
 	async saveSettings() {
@@ -395,15 +422,15 @@ export default class MyPlugin extends Plugin {
 			text: string;
 		}[] = [];
 
+		// 正则只编译一次，避免逐行重编译（C5）
+		const urlRegex = new RegExp(
+			`http://localhost:${port}/images/([^\\.]+)\\.info`,
+			"g",
+		);
 		for (let i = 0; i < lineCount; i++) {
 			let lineText = editor.getLine(i);
 			const originalLineText = lineText;
 
-			// Regex to find Eagle links
-			const urlRegex = new RegExp(
-				`http://localhost:${port}/images/([^\\.]+)\\.info`,
-				"g",
-			);
 			let match;
 			const matches = [];
 			while ((match = urlRegex.exec(lineText)) !== null) {

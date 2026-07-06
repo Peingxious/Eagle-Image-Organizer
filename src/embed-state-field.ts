@@ -3,7 +3,7 @@ import { Extension, RangeSetBuilder, StateField, Transaction } from "@codemirror
 import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
 import { editorLivePreviewField } from "obsidian";
 import { EmbedWidget } from "./embed-widget";
-import { isURL, isLocalHostLink, embedManager, isAltTextImage } from "./embed";
+import { isLocalHostLink, embedManager, isAltTextImage } from "./embed";
 
 // 使用与参考代码完全一致的正则表达式
 const formattingImageMarkerRegex = /formatting_formatting-image_image_image-marker(?:_list-\d*)?$/;
@@ -71,14 +71,8 @@ export const embedField = StateField.define<DecorationSet>({
                     // 重置alt文本开始位置
                     altTextStartPos = null;
                     
-                    // 检查是否应该嵌入
-                    if (!isURL(url)) {
-                        // print(`不是有效URL: ${url}`);
-                        return;
-                    }
-                    
-                    // 检查alt文本是否表示图片类型
-                    if (isAltTextImage(alt)) {
+					// 检查alt文本是否表示图片类型
+					if (isAltTextImage(alt)) {
                         // print(`根据alt文本识别为图片，跳过: ${alt}`);
                         return;
                     }

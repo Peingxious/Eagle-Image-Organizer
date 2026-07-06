@@ -68,6 +68,21 @@ If you like this plugin, consider buying me a coffee!
 
 ## Changelog
 
+### 0.4.0
+
+Performance-focused release. All startup, render, and operation hot paths have been optimized. Zero behavior change — pure speed-up (interfaces and embed logic are unchanged).
+
+| # | Area | Before | After |
+|---|------|--------|-------|
+| C1 | Startup disk write | `updateLibraryPath()` always called `saveSettings()` unconditionally on every launch | Disk write only happens when the library-path config actually changed |
+| C2 | Startup blocking | `startServer()` built the HTTP server + file watcher synchronously during `onload`, blocking UI readiness | Server starts after `onLayoutReady`; skips watcher creation when the library path is empty |
+| C3 | Render hot path | Each image/link node ran two `new URL()` parses + regex on every render/keystroke; `shouldEmbed` recomputed with no cache | Pre-compiled regex; `shouldEmbed` results cached per `src`; redundant `isURL` check removed |
+| C4 | Per-widget timers | Every `EmbedWidget` scheduled its own `setTimeout(0)` to hide the source `<img>` | Batched `requestAnimationFrame` hide across all widgets within one frame |
+| C5 | Regex recompile + network | `reverseSync` recompiled the regex per line; `fetchImageInfo` appended `&t=now` and hit the network every time | Regex compiled once before the loop; `fetchImageInfo` caches by item id in memory and drops the anti-cache timestamp |
+| C6 | Settings panel writes | Every keystroke in a text input called `saveSettings()` (wrote to disk) | 300 ms debounced save (path inputs additionally sync the library path) |
+| C7 | Click handlers | Two separate document-level capture `click` handlers | Merged into one handler with a cheap early-exit before link matching |
+| C8 | Insert modal fetch | Re-fetched the entire result set from Eagle on every keystroke, then filtered client-side | Results cached by (query + selected folders); identical queries reuse the cache |
+
 ### 0.3.9
 
 - Improvement: Refactored architecture to a modular class-based system for better performance and maintainability.

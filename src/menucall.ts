@@ -1150,6 +1150,9 @@ function copyFileToClipboardCMD(filePath: string) {
 	}
 }
 
+// C5：跨运行缓存 item 信息，避免每次打开笔记都重新请求 Eagle API
+const imageInfoCache = new Map<string, any>();
+
 export async function fetchImageInfo(
 	url: string,
 	port: number = 41595,
@@ -1164,21 +1167,25 @@ export async function fetchImageInfo(
 } | null> {
 	const match = url.match(/\/images\/(.*)\.info/);
 	if (match && match[1]) {
+		const id = match[1];
+		const cached = imageInfoCache.get(id);
+		if (cached !== undefined) return cached;
+
 		const requestOptions: RequestInit = {
 			method: "GET",
 			redirect: "follow" as RequestRedirect,
 		};
 
 		try {
-			// Use proxy port and add timestamp to prevent caching
 			// Use 127.0.0.1 instead of localhost to avoid IPv6 issues
 			const response = await fetch(
-				`http://127.0.0.1:${port}/api/item/info?id=${match[1]}&t=${Date.now()}`,
+				`http://127.0.0.1:${port}/api/item/info?id=${id}`,
 				requestOptions,
 			);
 			const result = await response.json();
 
 			if (result.status === "success" && result.data) {
+				imageInfoCache.set(id, result.data);
 				return result.data;
 			} else {
 				print("Failed to fetch item info");

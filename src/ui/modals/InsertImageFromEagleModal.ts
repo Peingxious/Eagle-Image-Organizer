@@ -23,6 +23,7 @@ export class InsertImageFromEagleModal extends Modal {
 	private currentPort: number = 6060;
 	private selectedFolderFilterIds: Set<string> = new Set();
 	private folderTree: EagleFolder[] | null = null;
+	private searchCache = new Map<string, any[]>();
 
 	constructor(app: App, plugin: MyPlugin) {
 		super(app);
@@ -187,18 +188,32 @@ export class InsertImageFromEagleModal extends Modal {
 		const params = await this.buildSearchParams(query, port);
 		const url = `http://localhost:${port}/api/item/list?${params.toString()}`;
 
-		try {
-			const response = await fetch(url);
-			const result = await response.json();
+		// C8：相同查询（含过滤器选择）复用缓存，避免每次按键重新拉取
+		const cacheKey =
+			query + '|' + Array.from(this.selectedFolderFilterIds).sort().join(',');
+		let raw: any[] | undefined = this.searchCache.get(cacheKey);
 
-			if (result.status !== 'success' || !Array.isArray(result.data)) {
+		if (!raw) {
+			try {
+				const response = await fetch(url);
+				const result = await response.json();
+
+				if (result.status !== 'success' || !Array.isArray(result.data)) {
+					this.infoEl.textContent = t('modal.insertImage.noResult');
+					return;
+				}
+				raw = result.data as any[];
+				this.searchCache.set(cacheKey, raw);
+			} catch (e) {
+				print('InsertImageFromEagleModal search error', e);
 				this.infoEl.textContent = t('modal.insertImage.noResult');
 				return;
 			}
+		}
 
-			const terms = query.toLowerCase().split(/\s+/).filter(v => v.length > 0);
-			const exts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff'];
-			const items = result.data.filter((item: any) => {
+		const terms = query.toLowerCase().split(/\s+/).filter(v => v.length > 0);
+		const exts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff'];
+		const items = raw!.filter((item: any) => {
 				if (!item?.name || !item?.ext) return false;
 				const ext = String(item.ext).toLowerCase();
 				if (!exts.includes(ext)) return false;
@@ -214,10 +229,6 @@ export class InsertImageFromEagleModal extends Modal {
 
 			this.infoEl.textContent = '';
 			this.renderResults(items, port);
-		} catch (e) {
-			print('InsertImageFromEagleModal search error', e);
-			this.infoEl.textContent = t('modal.insertImage.noResult');
-		}
 	}
 
 	private async buildSearchParams(query: string, port: number): Promise<URLSearchParams> {

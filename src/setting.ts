@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Notice } from "obsidian";
+import { App, PluginSettingTab, Setting, Notice, debounce } from "obsidian";
 import MyPlugin from "./main";
 import { startServer, refreshServer, stopServer } from "./server";
 import { t } from "./i18n";
@@ -70,6 +70,16 @@ export class SampleSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	// C6：文本输入防抖保存，避免每次按键写盘
+	private debouncedSave = debounce(() => {
+		void this.plugin.saveSettings();
+	}, 300);
+
+	private debouncedSaveAndSync = debounce(() => {
+		void this.plugin.saveSettings();
+		void this.plugin.updateLibraryPath();
+	}, 300);
+
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
@@ -81,10 +91,10 @@ export class SampleSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder(t("setting.port.placeholder"))
 					.setValue(this.plugin.settings.port.toString())
-					.onChange(async (value) => {
-						this.plugin.settings.port = parseInt(value);
-						await this.plugin.saveSettings();
-					}),
+						.onChange(async (value) => {
+							this.plugin.settings.port = parseInt(value);
+							this.debouncedSave();
+						}),
 			);
 
 		const librariesSection = containerEl.createDiv();
@@ -182,7 +192,7 @@ export class SampleSettingTab extends PluginSettingTab {
 						.setValue(lib.name)
 						.onChange(async (value) => {
 							lib.name = value;
-							await this.plugin.saveSettings();
+							this.debouncedSave();
 						}),
 				);
 
@@ -315,11 +325,11 @@ export class SampleSettingTab extends PluginSettingTab {
 			.addText((text) =>
 				text
 					.setPlaceholder(t("setting.folderId.placeholder"))
-					.setValue(this.plugin.settings.folderId || "")
-					.onChange(async (value) => {
-						this.plugin.settings.folderId = value;
-						await this.plugin.saveSettings();
-					}),
+						.setValue(this.plugin.settings.folderId || "")
+						.onChange(async (value) => {
+							this.plugin.settings.folderId = value;
+							this.debouncedSave();
+						}),
 			);
 
 		(folderIdSetting as any).settingEl.style.marginTop = "10px";
@@ -385,7 +395,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				text.setValue(root.name || "");
 				text.onChange(async (value) => {
 					root.name = value;
-					await this.plugin.saveSettings();
+					this.debouncedSave();
 				});
 			});
 			row.addText((text) => {
@@ -395,7 +405,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				text.setValue(root.folderId || "");
 				text.onChange(async (value) => {
 					root.folderId = value;
-					await this.plugin.saveSettings();
+					this.debouncedSave();
 				});
 			});
 			row.addExtraButton((button) => {
@@ -478,7 +488,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				text.setValue(filter.name || "");
 				text.onChange(async (value) => {
 					filter.name = value;
-					await this.plugin.saveSettings();
+					this.debouncedSave();
 				});
 			});
 			row.addText((text) => {
@@ -486,7 +496,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				text.setValue(filter.folderId || "");
 				text.onChange(async (value) => {
 					filter.folderId = value;
-					await this.plugin.saveSettings();
+					this.debouncedSave();
 				});
 			});
 			row.addExtraButton((button) => {
@@ -577,13 +587,13 @@ export class SampleSettingTab extends PluginSettingTab {
 			.addText((text) =>
 				text
 					.setPlaceholder(t("setting.imageSize.placeholder"))
-					.setValue(this.plugin.settings.imageSize?.toString() || "")
-					.onChange(async (value) => {
-						this.plugin.settings.imageSize = value
-							? parseInt(value)
-							: undefined;
-						await this.plugin.saveSettings();
-					}),
+						.setValue(this.plugin.settings.imageSize?.toString() || "")
+						.onChange(async (value) => {
+							this.plugin.settings.imageSize = value
+								? parseInt(value)
+								: undefined;
+							this.debouncedSave();
+						}),
 			);
 
 		(imageSizeSetting as any).settingEl.style.marginTop = "10px";
@@ -609,7 +619,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				slider.onChange(async (value) => {
 					this.plugin.settings.adaptiveRatio = value;
 					new Notice(t("setting.adaptiveRatio.notice", { value }));
-					await this.plugin.saveSettings();
+					this.debouncedSave();
 				});
 				slider.setDynamicTooltip();
 			});
